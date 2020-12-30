@@ -1,0 +1,17 @@
+[package]
+name = "pacman_installer"
+version = "0.1.0"
+authors = ["programingjd <programingjd@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rm_rf = "0.6.0"
+ansi_term = "0.12.1"
+reqwest = { version = "0.10.10", features = ["blocking"] }
+scraper = "0.12.0"
+regex = "1.4.2"
+zstd = "0.6.0+zstd.1.4.8"
+xz-decom = "0.2.0"
+tar = "0.4.30"
