@@ -1,3 +1,8 @@
+mod commands;
+
+#[macro_use]
+extern crate lazy_static;
+
 use ansi_term::Color;
 use regex::Regex;
 use scraper::{Html, Selector};
@@ -207,6 +212,7 @@ fn install(
 fn unpack_package_tar(target: &Path, data: &[u8]) -> Vec<String> {
     println!("Extracting tar archive");
     let mut dependencies = vec![];
+    let bash_env_path = target.join("usr").join("bin").to_string_lossy().to_string();
     match tar::Archive::new(data).entries() {
         Ok(entries) => {
             entries.filter_map(|it| it.ok()).for_each(|mut entry| {
@@ -254,6 +260,7 @@ fn unpack_package_tar(target: &Path, data: &[u8]) -> Vec<String> {
                                     )
                                     .current_dir(&target)
                                     .arg(".INSTALL")
+                                    .env("PATH", &bash_env_path)
                                     .output()
                                     {
                                         Ok(output) => {
