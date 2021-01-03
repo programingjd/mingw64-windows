@@ -51,15 +51,41 @@ pub fn file_was_updated_recently(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// A string representing the value of http response header: 'ETag'.
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct ETag {
+    pub value: String,
+}
+
+impl Display for ETag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.write_str(&self.value)
+    }
+}
+
+impl From<String> for ETag {
+    fn from(value: String) -> Self {
+        Self { value }
+    }
+}
+
+impl From<&str> for ETag {
+    fn from(value: &str) -> Self {
+        Self {
+            value: value.to_string(),
+        }
+    }
+}
+
 /// The ETag header sent by server is used to check if we already have the latest version.
 #[derive(Debug)]
 pub struct Response {
-    pub etag: String,
+    pub etag: ETag,
     pub body: Vec<u8>,
 }
 
 /// Performs a HEAD request to get the ETag header.
-pub fn etag(url: &str) -> Result<String> {
+pub fn etag(url: &str) -> Result<ETag> {
     reqwest::blocking::Client::new()
         .head(url)
         .send()
@@ -67,7 +93,7 @@ pub fn etag(url: &str) -> Result<String> {
         .and_then(|resp| {
             resp.headers()
                 .get("etag")
-                .and_then(|value| value.to_str().ok().map(|it| it.to_string()))
+                .and_then(|value| value.to_str().ok().map(|it| ETag::from(it)))
         })
         .ok_or(DownloadError)
 }
@@ -81,7 +107,7 @@ pub fn download(url: &str) -> Result<Response> {
                 .and_then(|it| it.to_str().map(|it| it.to_string()).ok())
                 .and_then(|etag| {
                     resp.bytes().ok().map(|it| Response {
-                        etag,
+                        etag: ETag::from(etag),
                         body: it.to_vec(),
                     })
                 })

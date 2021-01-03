@@ -6,9 +6,9 @@ use std::io::Read;
 use std::path::Path;
 
 use crate::commands::errors::Result;
-use crate::commands::packages::Package;
+use crate::commands::packages::{Package, Packages};
 use crate::commands::utils;
-use crate::commands::utils::Compression;
+use crate::commands::utils::{Compression, ETag};
 
 #[derive(Debug, Copy, Clone)]
 pub enum Repository {
@@ -24,7 +24,7 @@ impl Display for Repository {
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct RepositoryVersion {
-    pub etag: String,
+    pub etag: ETag,
     pub repository: &'static Repository,
 }
 
@@ -41,25 +41,13 @@ impl PartialEq for Repository {
     }
 }
 
+impl Eq for Repository {}
+
 impl PartialOrd for Repository {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.name().partial_cmp(other.name())
     }
-    fn lt(&self, other: &Self) -> bool {
-        self.name().lt(other.name())
-    }
-    fn le(&self, other: &Self) -> bool {
-        self.name().le(other.name())
-    }
-    fn gt(&self, other: &Self) -> bool {
-        self.name().gt(other.name())
-    }
-    fn ge(&self, other: &Self) -> bool {
-        self.name().ge(other.name())
-    }
 }
-
-impl Eq for Repository {}
 
 impl Ord for Repository {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -98,18 +86,18 @@ impl Repository {
     fn db_url(&self) -> String {
         format!("{}{}.db", self.url(), self.name())
     }
-    pub fn remote_etag(&self) -> Result<String> {
+    pub fn remote_etag(&self) -> Result<ETag> {
         utils::etag(&self.db_url())
     }
     /// Downloads the {repo}.db file that is in fact a tar.gz.
     /// The tar has one folder per package and inside each folder there's a desc file
     /// with package information.
-    pub fn remote_packages(&'static self) -> Result<(RepositoryVersion, Vec<Package>)> {
+    pub fn remote_packages(&'static self) -> Result<Packages> {
         let resp = utils::download(&self.db_url())?;
         let data = Compression::GZ.decompress(&resp.body)?;
         let mut tar = tar::Archive::new(data.as_slice());
         let entries = &mut tar.entries()?;
-        Ok((
+        Ok(Packages::create(
             RepositoryVersion {
                 etag: resp.etag,
                 repository: &self,
@@ -183,9 +171,10 @@ mod tests {
 
     #[test]
     fn test() {
-        let (etag, packages) = Repository::Msys.remote_packages().unwrap();
-        println!("ETag: {:?}", &etag);
+        let packages = Repository::Msys.remote_packages().unwrap();
+        println!("ETag: {:?}", &packages.version.etag);
         packages
+            .list
             .iter()
             .for_each(|package| println!("{}", &String::from(package)));
     }

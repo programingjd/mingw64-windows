@@ -20,3 +20,6 @@ zstd = "0.6.0"
 xz-decom = "0.2.0"
 inflate = "0.4.5"
 tar = "0.4.30"
+
+[dev-dependencies]
+cool_asserts = "1.0.3"
