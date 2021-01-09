@@ -144,10 +144,16 @@ impl Repository {
             repository: Repository::from(&self.name())?,
             name: name.to_string(),
             version: version.to_string(),
-            compression: filename
-                .extension()
-                .and_then(|ext| Compression::from_extension(&ext.to_string_lossy().to_string()))?,
-            url: format!("{}{}", &self.url(), &filename.to_string_lossy().to_string()),
+            compression: Some(
+                filename.extension().and_then(|ext| {
+                    Compression::from_extension(&ext.to_string_lossy().to_string())
+                })?,
+            ),
+            url: Some(format!(
+                "{}{}",
+                &self.url(),
+                &filename.to_string_lossy().to_string()
+            )),
             dependencies,
         })
     }

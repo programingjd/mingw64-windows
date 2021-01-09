@@ -1,18 +1,23 @@
 use std::convert::TryFrom;
 use std::result::Result as StdResult;
 
-use crate::commands::errors::{Error, Error::ParseError};
+use crate::commands::errors::Error::IOError;
+use crate::commands::errors::{Error, Error::ParseError, Result};
 use crate::commands::repositories::{Repository, RepositoryVersion};
 use crate::commands::utils::Compression;
 use std::cmp::Ordering;
+use std::collections::BTreeSet;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct Package {
     pub repository: &'static Repository,
     pub name: String,
     pub version: String,
-    pub compression: &'static Compression,
-    pub url: String,
+    pub compression: Option<&'static Compression>,
+    pub url: Option<String>,
     pub dependencies: Option<Vec<String>>,
 }
 
@@ -55,20 +60,24 @@ impl TryFrom<&str> for Package {
     type Error = Error;
     fn try_from(value: &str) -> StdResult<Self, Self::Error> {
         let cols: Vec<&str> = value.split(' ').collect();
-        if cols.len() < 4 {
+        if cols.len() < 3 {
             return Err(ParseError);
         }
         let repository = Repository::from(cols[0]).ok_or(ParseError)?;
         let name = cols[1].to_string();
         let version = cols[2].to_string();
-        let compression = Compression::from_extension(cols[3]).ok_or(ParseError)?;
+        let compression = if let Some(col) = cols.get(3) {
+            Some(Compression::from_extension(col).ok_or(ParseError)?)
+        } else {
+            None
+        };
         let dependencies = cols.iter().position(|&it| it == "+").map(|pos| {
             cols.into_iter()
                 .skip(pos + 1)
                 .map(|it| it.to_string())
                 .collect()
         });
-        let url = url_from(repository, &name, &version, compression);
+        let url = compression.map(|it| url_from(repository, &name, &version, it));
         Ok(Package {
             repository,
             name,
@@ -99,12 +108,10 @@ fn url_from(
 /// followed by optional dependencies: + {package_name_with_optional_version_constraints} ...
 impl From<&Package> for String {
     fn from(package: &Package) -> Self {
-        let mut cols = vec![
-            package.repository.name(),
-            &package.name,
-            &package.version,
-            package.compression.extension(),
-        ];
+        let mut cols = vec![package.repository.name(), &package.name, &package.version];
+        if let Some(ref compression) = package.compression {
+            cols.push(compression.extension())
+        }
         if let Some(ref deps) = package.dependencies {
             cols.push("+");
             deps.iter().for_each(|dep| cols.push(dep));
@@ -126,11 +133,27 @@ impl Packages {
             list: packages,
         }
     }
+    pub fn get_packages_from_file(available_packages_file: &Path) -> Result<BTreeSet<Package>> {
+        let decoder = zstd::Decoder::new(File::open(available_packages_file)?)?;
+        BufReader::new(decoder)
+            .lines()
+            .skip(1)
+            .map(|it| {
+                it.map_err(|err| IOError(err))
+                    .and_then(|line| Package::try_from(line.as_str()))
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
+    lazy_static! {
+        static ref DATA_DIR: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data");
+    }
 
     #[test]
     fn test_parsing_with_dependencies() {
@@ -139,7 +162,8 @@ mod tests {
         assert_eq!(package.repository, &Repository::Msys);
         assert_eq!(package.name, "name");
         assert_eq!(package.version, "version");
-        assert_eq!(package.compression, &Compression::ZSTD);
+        assert!(package.compression.is_some());
+        assert_eq!(package.compression.unwrap(), &Compression::ZSTD);
         let dependencies = package.dependencies.unwrap();
         assert_eq!(
             dependencies.len(),
@@ -152,8 +176,10 @@ mod tests {
         assert_eq!(dependencies.get(1).unwrap(), "dep2=1");
         assert_eq!(dependencies.get(2).unwrap(), "dep3>3.2");
         assert_eq!(dependencies.get(3).unwrap(), "dep4");
-        assert!(package.url.starts_with(package.repository.url()));
-        assert!(package.url.ends_with(package.compression.extension()));
+        assert!(package.url.is_some());
+        let url = package.url.unwrap();
+        assert!(url.starts_with(package.repository.url()));
+        assert!(url.ends_with(package.compression.unwrap().extension()));
     }
 
     #[test]
@@ -162,11 +188,14 @@ mod tests {
         assert_eq!(package.repository, &Repository::Mingw64);
         assert_eq!(package.name, "package");
         assert_eq!(package.version, "1.0");
-        assert_eq!(package.compression, &Compression::XZ);
+        assert!(package.compression.is_some());
+        assert_eq!(package.compression.unwrap(), &Compression::XZ);
         let dependencies = package.dependencies.unwrap();
         assert!(dependencies.is_empty());
-        assert!(package.url.starts_with(package.repository.url()));
-        assert!(package.url.ends_with(package.compression.extension()));
+        assert!(package.url.is_some());
+        let url = package.url.unwrap();
+        assert!(url.starts_with(package.repository.url()));
+        assert!(url.ends_with(package.compression.unwrap().extension()));
     }
 
     #[test]
@@ -175,10 +204,24 @@ mod tests {
         assert_eq!(package.repository, &Repository::Msys);
         assert_eq!(package.name, "name");
         assert_eq!(package.version, "version");
-        assert_eq!(package.compression, &Compression::ZSTD);
+        assert!(package.compression.is_some());
+        assert_eq!(package.compression.unwrap(), &Compression::ZSTD);
         assert!(package.dependencies.is_none());
-        assert!(package.url.starts_with(package.repository.url()));
-        assert!(package.url.ends_with(package.compression.extension()));
+        assert!(package.url.is_some());
+        let url = package.url.unwrap();
+        assert!(url.starts_with(package.repository.url()));
+        assert!(url.ends_with(package.compression.unwrap().extension()));
+    }
+
+    #[test]
+    fn test_parsing_without_compression() {
+        let package = Package::try_from("msys name version").unwrap();
+        assert_eq!(package.repository, &Repository::Msys);
+        assert_eq!(package.name, "name");
+        assert_eq!(package.version, "version");
+        assert!(package.compression.is_none());
+        assert!(package.dependencies.is_none());
+        assert!(package.url.is_none());
     }
 
     #[test]
@@ -187,7 +230,8 @@ mod tests {
         let name = "name".to_string();
         let version = "version".to_string();
         let compression = &Compression::ZSTD;
-        let url = url_from(repository, &name, &version, compression);
+        let url = Some(url_from(repository, &name, &version, compression));
+        let compression = Some(compression);
         let dep1 = "dep1".to_string();
         let dep2 = "dep2=1.0".to_string();
         let dep3 = "dep3".to_string();
@@ -213,7 +257,8 @@ mod tests {
         let name = "package".to_string();
         let version = "1.0".to_string();
         let compression = &Compression::XZ;
-        let url = url_from(repository, &name, &version, compression);
+        let url = Some(url_from(repository, &name, &version, compression));
+        let compression = Some(compression);
         let package = Package {
             repository,
             name,
@@ -230,7 +275,6 @@ mod tests {
         assert!(Package::try_from("").is_err());
         assert!(Package::try_from("msys").is_err());
         assert!(Package::try_from("msys name").is_err());
-        assert!(Package::try_from("msys name version").is_err());
         assert!(Package::try_from("unknown_repo name 1.0 zst").is_err());
         assert!(Package::try_from("msys name 1.0 unknown_ext").is_err());
     }
@@ -248,5 +292,10 @@ mod tests {
         assert_eq!(package, Package::try_from("msys a 1 xz").unwrap());
         assert_ne!(package, Package::try_from("msys b 1 zst + d1 d2").unwrap());
         assert_ne!(package, Package::try_from("msys a 2 zst + d1 d2").unwrap());
+    }
+
+    #[test]
+    fn read_packages_from_non_existing_file() {
+        assert!(Packages::get_packages_from_file(&DATA_DIR.join("non_existing_file.zst")).is_err());
     }
 }

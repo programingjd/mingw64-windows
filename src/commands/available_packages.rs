@@ -1,11 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::convert::TryFrom;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 
 use ansi_term::Color;
 
-use crate::commands::errors::Error::IOError;
 use crate::commands::errors::Result;
 use crate::commands::packages::{Package, Packages};
 use crate::commands::repositories::{Repository, RepositoryVersion};
@@ -18,12 +16,12 @@ use std::process::exit;
 /// and then returns a set of packages.
 pub fn get_packages(available_packages_file: &Path) -> BTreeSet<Package> {
     if file_was_updated_recently(available_packages_file) {
-        match get_packages_from_file(available_packages_file) {
+        match Packages::get_packages_from_file(available_packages_file) {
             Ok(packages) => return packages,
             Err(_) => {}
         }
     }
-    let mut cache_versions = get_repository_versions_from_file(available_packages_file);
+    let cache_versions = get_repository_versions_from_file(available_packages_file);
     let repositories_to_sync: Vec<&Repository> = Repository::enabled()
         .iter()
         .map(|it| *it)
@@ -39,7 +37,7 @@ pub fn get_packages(available_packages_file: &Path) -> BTreeSet<Package> {
         .collect();
     if repositories_to_sync.is_empty() {
         // try to return the list from the cache
-        if let Ok(packages) = get_packages_from_file(available_packages_file) {
+        if let Ok(packages) = Packages::get_packages_from_file(available_packages_file) {
             return packages;
         }
         // if the cache is missing/invalid, fetch the lists from the remote repositories,
@@ -70,7 +68,7 @@ pub fn get_packages(available_packages_file: &Path) -> BTreeSet<Package> {
                 .collect();
             // if there were some failures we need to read the cache
             if synced_repository_packages.iter().any(|it| it.is_none()) {
-                match get_packages_from_file(available_packages_file) {
+                match Packages::get_packages_from_file(available_packages_file) {
                     Ok(packages) => {
                         let successfully_synced_packages: Vec<_> = synced_repository_packages
                             .into_iter()
@@ -131,7 +129,7 @@ pub fn get_packages(available_packages_file: &Path) -> BTreeSet<Package> {
             }
         } else {
             // try to read the list from the cache because we are not syncing all repos
-            if let Ok(packages) = get_packages_from_file(available_packages_file) {
+            if let Ok(packages) = Packages::get_packages_from_file(available_packages_file) {
                 // group the packages by repository
                 let mut package_map: BTreeMap<&Repository, Vec<Package>> = BTreeMap::new();
                 packages.into_iter().for_each(|it| {
@@ -314,31 +312,14 @@ fn get_repository_versions_from_file(
         .unwrap_or(BTreeMap::new())
 }
 
-fn get_packages_from_file(available_packages_file: &Path) -> Result<BTreeSet<Package>> {
-    let decoder = zstd::Decoder::new(File::open(available_packages_file)?)?;
-    BufReader::new(decoder)
-        //
-        // BufReader::new(std::fs::File::open(available_packages_file)?)
-        .lines()
-        .skip(1)
-        .map(|it| {
-            it.map_err(|err| IOError(err))
-                .and_then(|line| Package::try_from(line.as_str()))
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::convert::TryFrom;
+    use std::path::PathBuf;
 
     lazy_static! {
         static ref DATA_DIR: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data");
-    }
-
-    #[test]
-    fn read_from_non_existing_file() {
-        assert!(get_packages_from_file(&DATA_DIR.join("non_existing_file.zst")).is_err());
     }
 
     #[test]
@@ -347,7 +328,7 @@ mod tests {
     }
 
     fn read_packages_from_file_at(filename: &str) {
-        let packages = get_packages_from_file(&DATA_DIR.join(filename)).unwrap();
+        let packages = Packages::get_packages_from_file(&DATA_DIR.join(filename)).unwrap();
         assert_eq!(packages.len(), 5);
         assert!(packages
             .get(&Package::try_from("msys package1 1.0 zst").unwrap())
@@ -390,7 +371,7 @@ mod tests {
     fn write_packages_to_file() {
         rm_rf::ensure_removed(&DATA_DIR.join("tmp")).unwrap();
         let path = DATA_DIR.join("available_packages_file1.zst");
-        let packages = get_packages_from_file(&path).unwrap();
+        let packages = Packages::get_packages_from_file(&path).unwrap();
         let mut msys_packages = Vec::new();
         let mut mingw64_packages = Vec::new();
         packages.into_iter().for_each(|it| match it.repository {
@@ -418,7 +399,7 @@ mod tests {
             },
         ];
         assert!(save_packages(&DATA_DIR.join("tmp"), &packages).is_ok());
-        let _ = get_packages_from_file(&DATA_DIR.join("tmp")).unwrap();
+        let _ = Packages::get_packages_from_file(&DATA_DIR.join("tmp")).unwrap();
         read_repository_versions_from_file_at("tmp");
         read_packages_from_file_at("tmp");
     }

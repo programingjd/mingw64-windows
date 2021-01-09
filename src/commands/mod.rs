@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::commands::packages::Package;
 use crate::commands::utils::YesNoAnswer::{NO, YES};
 use ansi_term::Color;
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::process::exit;
@@ -30,7 +31,31 @@ pub fn root_directory() -> PathBuf {
     }
 }
 
-pub fn list_installed_packages(root_directory: &Path) {
+pub fn list_installed_packages(root_directory: &Path, packages: BTreeSet<&str>) {
+    if paths::get_installed_packages_file_path(root_directory).exists() {
+        let path = paths::get_installed_packages_file_path(root_directory);
+        let installed_packages = installed_packages::get_packages(&path);
+        if installed_packages.len() > 0 {
+            packages
+                .iter()
+                .filter_map(|name| {
+                    installed_packages
+                        .iter()
+                        .find(|&it| &it.name == name)
+                        .map(|package| {
+                            format!(
+                                "{} {}",
+                                Color::Purple.paint(&package.name),
+                                &package.version
+                            )
+                        })
+                })
+                .for_each(|it| println!("{}", it));
+        }
+    }
+}
+
+pub fn list_all_installed_packages(root_directory: &Path) {
     if paths::get_installed_packages_file_path(root_directory).exists() {
         let path = paths::get_installed_packages_file_path(root_directory);
         let packages = installed_packages::get_packages(&path);
