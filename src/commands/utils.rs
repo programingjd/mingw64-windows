@@ -38,6 +38,56 @@ fn prompt(question: &str, default: YesNoAnswer) {
     }
 }
 
+pub fn text_input(header: &str, default: Option<&str>) -> String {
+    match default {
+        Some(default) => println!("{} ({})", header, default),
+        None => println!("{}", header),
+    }
+    let mut line = String::new();
+    loop {
+        let _ = io::stdin().read_line(&mut line);
+        match line.as_str().trim() {
+            "" => {
+                if let Some(default) = default {
+                    break default;
+                } else {
+                    line.clear();
+                }
+            }
+            it => break it,
+        };
+    }
+    .to_string()
+}
+
+pub fn choice_input(header: &str, options: Vec<&str>, default: Option<&str>) -> String {
+    match default {
+        Some(default) => println!("{}: ({})", header, default),
+        None => println!("{}", header),
+    }
+    let mut line = String::new();
+    loop {
+        let _ = io::stdin().read_line(&mut line);
+        match line.as_str().trim() {
+            "" => {
+                if let Some(default) = default {
+                    break default;
+                } else {
+                    line.clear();
+                }
+            }
+            it => {
+                if options.contains(&it) {
+                    break it;
+                } else {
+                    line.clear();
+                }
+            }
+        };
+    }
+    .to_string()
+}
+
 /// Looks at the last modification date and returns true if less than an hour has elapsed.
 /// Returns false if an error occurs (e.g. the file doesn't exist).
 pub fn file_was_updated_recently(path: &Path) -> bool {

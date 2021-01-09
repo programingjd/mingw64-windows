@@ -1,8 +1,3 @@
-mod commands;
-
-#[macro_use]
-extern crate lazy_static;
-
 use ansi_term::Color;
 use regex::Regex;
 use scraper::{Html, Selector};
