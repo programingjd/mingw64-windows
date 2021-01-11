@@ -4,6 +4,7 @@ use std::result::Result as StdResult;
 #[derive(Debug)]
 pub enum Error {
     IOError(StdIoError),
+    RemoveError,
     DownloadError,
     DecompressionError,
     ParseError,

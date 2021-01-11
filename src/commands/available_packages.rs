@@ -10,7 +10,7 @@ use crate::commands::repositories::{Repository, RepositoryVersion};
 use crate::commands::utils::{file_was_updated_recently, ETag};
 use std::fs;
 use std::fs::File;
-use std::process::exit;
+use std::process;
 
 /// Checks if the cached list of available packages is up to date and updates it if necessary,
 /// and then returns a set of packages.
@@ -115,7 +115,7 @@ pub fn get_packages(available_packages_file: &Path) -> BTreeSet<Package> {
                     Err(_) => {
                         // If we can't read the cache then we can't recover
                         println!("{}", Color::Red.paint("Aborting"));
-                        exit(1);
+                        process::exit(1);
                     }
                 }
             }
@@ -200,6 +200,13 @@ pub fn get_packages(available_packages_file: &Path) -> BTreeSet<Package> {
     }
 }
 
+pub fn latest_version<'a>(name: &str, packages: &'a BTreeSet<Package>) -> Option<&'a Package> {
+    packages
+        .iter()
+        .filter(|&it| &it.name == name)
+        .max_by_key(|&it| &it.version)
+}
+
 fn save_and_return_packages(
     available_packages_file: &Path,
     repository_packages: Vec<Packages>,
@@ -262,7 +269,7 @@ fn get_packages_from_repositories(available_packages_file: &Path) -> BTreeSet<Pa
                             repository.name()
                         ))
                     );
-                    exit(1);
+                    process::exit(1);
                 }
             }
         })
@@ -277,7 +284,7 @@ fn get_packages_from_repositories(available_packages_file: &Path) -> BTreeSet<Pa
                 "{}",
                 Color::Red.paint("Failed to create {} package cache.\nAborting.")
             );
-            exit(1);
+            process::exit(1);
         }
     }
 }

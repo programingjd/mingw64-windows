@@ -9,7 +9,7 @@ use std::time::Duration;
 use crate::commands::errors::Error::{DecompressionError, DownloadError};
 use crate::commands::errors::Result;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum YesNoAnswer {
     YES,
     NO,
@@ -20,9 +20,10 @@ pub fn yes_or_no(question: &str, default: YesNoAnswer) -> YesNoAnswer {
     let mut line = String::new();
     loop {
         let _ = io::stdin().read_line(&mut line);
-        match line.as_str() {
+        match line.trim() {
             "y" | "yes" | "Y" | "Yes" | "YES" => break YesNoAnswer::YES,
             "n" | "no" | "N" | "No" | "NO" => break YesNoAnswer::NO,
+            "" => break default,
             _ => {
                 line.clear();
                 prompt(question, default);
@@ -46,7 +47,7 @@ pub fn text_input(header: &str, default: Option<&str>) -> String {
     let mut line = String::new();
     loop {
         let _ = io::stdin().read_line(&mut line);
-        match line.as_str().trim() {
+        match line.trim() {
             "" => {
                 if let Some(default) = default {
                     break default;
@@ -55,34 +56,6 @@ pub fn text_input(header: &str, default: Option<&str>) -> String {
                 }
             }
             it => break it,
-        };
-    }
-    .to_string()
-}
-
-pub fn choice_input(header: &str, options: Vec<&str>, default: Option<&str>) -> String {
-    match default {
-        Some(default) => println!("{}: ({})", header, default),
-        None => println!("{}", header),
-    }
-    let mut line = String::new();
-    loop {
-        let _ = io::stdin().read_line(&mut line);
-        match line.as_str().trim() {
-            "" => {
-                if let Some(default) = default {
-                    break default;
-                } else {
-                    line.clear();
-                }
-            }
-            it => {
-                if options.contains(&it) {
-                    break it;
-                } else {
-                    line.clear();
-                }
-            }
         };
     }
     .to_string()
