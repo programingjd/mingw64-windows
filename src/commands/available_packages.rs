@@ -338,19 +338,19 @@ mod tests {
         let packages = Packages::get_packages_from_file(&DATA_DIR.join(filename)).unwrap();
         assert_eq!(packages.len(), 5);
         assert!(packages
-            .get(&Package::try_from("msys package1 1.0 zst").unwrap())
+            .get(&Package::try_from("msys package1 1.0").unwrap())
             .is_some());
         assert!(packages
-            .get(&Package::try_from("msys package2 1.0 zst").unwrap())
+            .get(&Package::try_from("msys package2 1.0 zst x86_64").unwrap())
             .is_some());
         assert!(packages
-            .get(&Package::try_from("msys package3 1.0.1 zst").unwrap())
+            .get(&Package::try_from("msys package3 1.0.1 zst any").unwrap())
             .is_some());
         assert!(packages
-            .get(&Package::try_from("mingw64 package4 3.1 zst").unwrap())
+            .get(&Package::try_from("mingw64 package4 3.1").unwrap())
             .is_some());
         assert!(packages
-            .get(&Package::try_from("mingw64 package5 3.1.2 zst").unwrap())
+            .get(&Package::try_from("mingw64 package5 3.1.2").unwrap())
             .is_some());
     }
 
@@ -411,10 +411,17 @@ mod tests {
         read_packages_from_file_at("tmp");
     }
 
-    // #[test]
-    // fn test() {
-    //     get_available_packages(Path::new("test.zst"))
-    //         .iter()
-    //         .for_each(|it| println!("{}", &it.name));
-    // }
+    #[test]
+    fn latest_version() {
+        let path = DATA_DIR.join("available_packages_file3.zst");
+        let packages = Packages::get_packages_from_file(&path).unwrap();
+        let latest = super::latest_version("name", &packages);
+        assert!(latest.is_some());
+        assert_eq!("1.2", latest.unwrap().version.as_str());
+        let latest = super::latest_version("other", &packages);
+        assert!(latest.is_some());
+        assert_eq!("0.9", latest.unwrap().version.as_str());
+        let latest = super::latest_version("not_there", &packages);
+        assert!(latest.is_none());
+    }
 }

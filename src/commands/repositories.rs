@@ -134,6 +134,9 @@ impl Repository {
         // version is the unique value of the %VERSION% section
         let versions = Self::section_values("%VERSION%", &sections)?;
         let version = versions.first()?;
+        // arch is the unique value of the %ARCH% section
+        let arches = Self::section_values("%ARCH%", &sections)?;
+        let arch = arches.first()?;
         // filename is the unique value of the %FILENAME% section
         // we deduce the package url and compression from it
         let filenames = Self::section_values("%FILENAME%", &sections)?;
@@ -149,6 +152,7 @@ impl Repository {
                     Compression::from_extension(&ext.to_string_lossy().to_string())
                 })?,
             ),
+            arch: Some(arch.to_string()),
             url: Some(format!(
                 "{}{}",
                 &self.url(),

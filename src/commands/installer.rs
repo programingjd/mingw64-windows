@@ -1,27 +1,32 @@
+use crate::commands::dependencies;
 use crate::commands::errors::{Error, Result};
 use crate::commands::packages::Package;
 use crate::commands::utils::YesNoAnswer::YES;
 use crate::commands::{available_packages, utils};
 use crate::commands::{installed_packages, paths};
 use ansi_term::Color;
-use regex::Regex;
 use std::borrow::Borrow;
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::BTreeSet;
 use std::convert::TryFrom;
 use std::path::Path;
 use std::{fs, process};
+use tar::EntryType;
 
-pub fn install(root_directory_path: &Path, packages: BTreeSet<&Package>) {
+pub fn install(root_directory_path: &Path, packages: BTreeSet<Package>) {
     let installed_packages_file_path = paths::get_installed_packages_file_path(root_directory_path);
     let installed_packages = installed_packages::get_packages(&installed_packages_file_path);
-    let mut installed_packages: BTreeSet<_> = installed_packages.iter().collect();
+    let installed_packages: BTreeSet<_> = installed_packages.iter().collect();
     let available_packages_file_path = paths::get_available_packages_file_path(root_directory_path);
     let available_packages = available_packages::get_packages(&available_packages_file_path);
 
     // add bash and coreutils if they aren't installed already, as they are needed to run
     // some of the packages post-install scripts.
     // also remove packages that are already installed (with the same version).
-    let mut packages: VecDeque<_> = if packages.iter().find(|&it| &it.name == "bash").is_none() {
+    let packages: Vec<_> = if installed_packages
+        .iter()
+        .find(|&it| &it.name == "bash")
+        .is_none()
+    {
         let bash = available_packages::latest_version("bash", &available_packages);
         if bash.is_none() {
             println!(
@@ -31,6 +36,7 @@ pub fn install(root_directory_path: &Path, packages: BTreeSet<&Package>) {
             process::exit(1);
         }
         let bash = bash.unwrap();
+        // if bash is missing, then coreutils is missing too.
         let coreutils = available_packages::latest_version("coreutils", &available_packages);
         if coreutils.is_none() {
             println!(
@@ -42,13 +48,11 @@ pub fn install(root_directory_path: &Path, packages: BTreeSet<&Package>) {
         let coreutils = coreutils.unwrap();
         vec![bash, coreutils]
             .into_iter()
-            .chain(
-                packages
-                    .into_iter()
-                    .filter(|&it| !installed_packages.contains(it)),
-            )
+            .chain(packages.iter().filter(|&it| {
+                !installed_packages.contains(it) && it.name != "bash" && it.name != "coreutils"
+            }))
             .collect()
-    } else if packages
+    } else if installed_packages
         .iter()
         .find(|&it| &it.name == "coreutils")
         .is_none()
@@ -66,73 +70,98 @@ pub fn install(root_directory_path: &Path, packages: BTreeSet<&Package>) {
             .into_iter()
             .chain(
                 packages
-                    .into_iter()
-                    .filter(|&it| !installed_packages.contains(it)),
+                    .iter()
+                    .filter(|&it| !installed_packages.contains(it) && it.name != "coreutils"),
             )
             .collect()
     } else {
         packages
-            .into_iter()
+            .iter()
             .filter(|&it| !installed_packages.contains(it))
             .collect()
     };
 
-    // We want to install packages in the correct order, meaning that we don't want to install
-    // a package and only then install its dependency, but install the dependencies first.
-    // Those dependencies can have (missing) dependencies too.
-    // To take care of this, on each iteration of the loop, we take the first element.
-    // If it has missing dependencies, then we add those dependencies at the front of the list
-    // (removing eventual occurrences later in the list) and proceed to the next iteration.
-    // If it has no missing dependency, then we install the package and remove it from the list.
-    while !packages.is_empty() {
-        let &package = packages.front().unwrap();
-        match package.dependencies.as_ref().map(|dependencies| {
-            let dependencies: Vec<_> = dependencies
-                .iter()
-                .filter_map(|dependency| {
-                    let package = dependency_name(dependency).and_then(|name| {
-                        available_packages::latest_version(name, &available_packages)
-                    });
-                    if package.is_none() {
-                        println!(
-                            "{}",
-                            Color::Red.paint(format!(
-                                "Could not find package dependency: {}",
-                                dependency
-                            ))
-                        );
-                    }
-                    package
-                })
-                .collect();
-            dependencies
-        }) {
-            Some(dependencies) => {
-                for dependency in dependencies {
-                    packages.retain(|&it| it != dependency);
-                    packages.push_front(dependency);
-                }
-            }
-            None => match install_package(root_directory_path, package) {
-                Ok(_) => {
-                    installed_packages.insert(packages.pop_front().unwrap());
-                }
-                Err(_) => {
-                    println!(
-                        "{}",
-                        Color::Red.paint(format!(
-                            "Failed to install package: {}. Aborting.",
-                            &package.name
-                        ))
-                    );
-                    process::exit(1);
-                }
-            },
+    for package in dependencies::list(packages, installed_packages, &available_packages) {
+        if install_package(root_directory_path, &package).is_err() {
+            println!(
+                "{}",
+                Color::Red.paint(format!("Failed to install {}. Aborting.", &package.name))
+            );
+            process::exit(1);
         }
     }
+
+    // let mut snapshots = BTreeSet::new();
+    // while !packages.is_empty() {
+    //     let &package = packages.front().unwrap();
+    //     let dependencies = package.dependencies.as_ref().and_then(|dependencies| {
+    //         let dependencies: Vec<_> = dependencies
+    //             .iter()
+    //             .filter_map(|dependency| {
+    //                 let dependency_package = dependency_name(dependency).and_then(|name| {
+    //                     available_packages::latest_version(name, &available_packages)
+    //                 });
+    //                 if dependency_package.is_none() {
+    //                     println!(
+    //                         "{}",
+    //                         Color::Red.paint(format!(
+    //                             "Could not find {} dependency: {}",
+    //                             &package.name, dependency
+    //                         ))
+    //                     );
+    //                 }
+    //                 dependency_package
+    //             })
+    //             .filter(|&package| !installed_packages.contains(package))
+    //             .collect();
+    //         if dependencies.is_empty() {
+    //             None
+    //         } else {
+    //             Some(dependencies)
+    //         }
+    //     });
+    //     let snapshot = packages
+    //         .iter()
+    //         .map(|&it| it.name.as_str())
+    //         .collect::<Vec<_>>()
+    //         .join(", ");
+    //     println!("{}", snapshot);
+    //     if snapshots.insert(snapshot) && dependencies.is_some() {
+    //         let mut dependencies = dependencies.unwrap();
+    //         dependencies.sort_by_key(|&it| {
+    //             -1 * it
+    //                 .dependencies
+    //                 .as_ref()
+    //                 .map(|it| it.len() as i8)
+    //                 .unwrap_or(0)
+    //         });
+    //         for dependency in dependencies {
+    //             packages.retain(|&it| it != dependency);
+    //             packages.push_front(dependency);
+    //         }
+    //     } else {
+    //         match install_package(root_directory_path, package) {
+    //             Ok(_) => {
+    //                 installed_packages.insert(packages.pop_front().unwrap());
+    //             }
+    //             Err(_) => {
+    //                 println!(
+    //                     "{}",
+    //                     Color::Red.paint(format!("Failed to install {}. Aborting.", &package.name))
+    //                 );
+    //                 process::exit(1);
+    //             }
+    //         }
+    //     }
+    // }
+}
+
+pub fn update(root_directory_path: &Path, packages: BTreeSet<Package>) {
+    todo!()
 }
 
 fn install_package(root_directory_path: &Path, package: &Package) -> Result<()> {
+    println!("{}", Color::Purple.paint(&package.name));
     // first update the pending installation file so that we retry the installation if we crash or
     // the program is interrupted.
     let pending_installation_file_path =
@@ -149,7 +178,7 @@ fn install_package(root_directory_path: &Path, package: &Package) -> Result<()> 
             println!(
                 "{}",
                 Color::Red.paint(format!(
-                    "Failed to decompress {} archive for package {}",
+                    "Failed to decompress {} archive for {}",
                     compression.extension(),
                     &package.name
                 ))
@@ -173,7 +202,7 @@ fn download_package_archive(package: &Package) -> Result<Vec<u8>> {
             println!(
                 "{}",
                 Color::Red.paint(format!(
-                    "Failed to download archive for package {} from {}",
+                    "Failed to download archive for {} from {}",
                     &package.name, url
                 ))
             );
@@ -202,7 +231,7 @@ fn extract_package(root_directory_path: &Path, uncompressed_package_archive: &[u
                                     let path = root_directory_path.join(name);
                                     entry.unpack(&path).unwrap();
                                     match std::process::Command::new(
-                                        &root_directory_path.join("bin").join("bash.exe"),
+                                        &root_directory_path.join("usr").join("bin").join("bash.exe"),
                                     )
                                     .current_dir(root_directory_path)
                                     .arg(".INSTALL")
@@ -231,11 +260,43 @@ fn extract_package(root_directory_path: &Path, uncompressed_package_archive: &[u
                                 }
                                 name => {
                                     if !name.contains("..") {
+                                        // println!("{}", &name.to_string());
                                         let path = root_directory_path.join(name);
                                         path.parent().and_then(|parent| {
                                             std::fs::create_dir_all(parent).ok()
                                         });
-                                        if let Err(_) = entry.unpack(&path) {
+                                        if match entry.header().entry_type() {
+                                            EntryType::Directory => fs::create_dir_all(&path).ok(),
+                                            EntryType::Link | EntryType::Symlink => {
+                                                entry
+                                                    .link_name()
+                                                    .ok()
+                                                    .and_then(|it| it)
+                                                    .and_then(|it| {
+                                                        junction::create(
+                                                            path.join(it.to_str().unwrap()),
+                                                            &path
+                                                        ).ok()
+                                                    })
+                                            },
+                                            EntryType::Regular => {
+                                                rm_rf::ensure_removed(&path).ok()
+                                                    .and_then(|_| entry.unpack(&path).map(|_| ()).ok())
+                                            }
+                                            it => {
+                                                println!(
+                                                    "{}",
+                                                    Color::Red.paint(&format!(
+                                                        "Skipping unsupported entry {} of type {:?}",
+                                                        path.strip_prefix(root_directory_path)
+                                                            .unwrap()
+                                                            .to_string_lossy(),
+                                                        it
+                                                    ))
+                                                );
+                                                Some(())
+                                            }
+                                        }.is_none() {
                                             println!(
                                                 "{}",
                                                 Color::Red.paint(&format!(
@@ -260,38 +321,28 @@ fn extract_package(root_directory_path: &Path, uncompressed_package_archive: &[u
     Ok(())
 }
 
-fn dependency_name(name_with_optional_version: &str) -> Option<&str> {
-    let re = Regex::new("[=>~#*]").unwrap();
-    re.split(name_with_optional_version)
-        .into_iter()
-        .next()
-        .map(|it| match it {
-            "sh" => "bash",
-            it => it,
-        })
-}
-
-pub fn check_for_pending_installation(root_directory_path: &Path) {
+pub fn check_for_pending_installation(root_directory_path: &Path, no_prompt: bool) {
     let pending_installation_file_path =
         paths::get_pending_installation_file_path(root_directory_path);
     if pending_installation_file_path.exists() {
         if let Ok(s) = fs::read_to_string(&pending_installation_file_path) {
             if !s.is_empty() {
                 match Package::try_from(s.as_str()) {
-                    Ok(ref package) => {
+                    Ok(package) => {
                         println!(
-                            "Installation of the package {} did not finish successfully.",
+                            "Installation of {} did not finish successfully.",
                             Color::Purple.paint(&package.name)
                         );
-                        let answer = utils::yes_or_no("Retry?", YES);
-                        let _ = rm_rf::remove(&pending_installation_file_path);
+                        let answer = utils::yes_or_no("Retry?", YES, no_prompt, Some("Retrying."));
                         match answer {
                             YES => {
                                 let mut packages = BTreeSet::new();
                                 packages.insert(package);
                                 install(root_directory_path, packages);
                             }
-                            _ => {}
+                            _ => {
+                                let _ = rm_rf::remove(&pending_installation_file_path);
+                            }
                         }
                     }
                     Err(_) => {}

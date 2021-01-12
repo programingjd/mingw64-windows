@@ -15,7 +15,18 @@ pub fn get_packages(installed_packages_file_path: &Path) -> BTreeSet<Package> {
 
 pub fn append_package(root_directory_path: &Path, package: &Package) -> Result<()> {
     let installed_packages_file_path = paths::get_installed_packages_file_path(root_directory_path);
-    let mut bytes = zstd::decode_all(File::open(&installed_packages_file_path)?)?;
+    let mut bytes = if let Ok(metadata) = fs::metadata(&installed_packages_file_path) {
+        if metadata.len() > 0 {
+            zstd::decode_all(File::open(&installed_packages_file_path)?)?
+        } else {
+            // file is empty
+            vec![]
+        }
+    } else {
+        // file doesn't exist
+        File::create(&installed_packages_file_path)?;
+        vec![]
+    };
     bytes.append("\n".as_bytes().to_vec().as_mut());
     bytes.append(String::from(package).as_bytes().to_vec().as_mut());
     let bytes = zstd::encode_all(bytes.as_slice(), zstd::DEFAULT_COMPRESSION_LEVEL)?;

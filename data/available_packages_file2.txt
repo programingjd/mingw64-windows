@@ -1,3 +1,3 @@
 mingw64 3
-mingw64 package4 3.4 zst +
-mingw64 package5 3.2.2 zst + package4>3.2.0
+mingw64 package4 3.4 zst any +
+mingw64 package5 3.2.2 zst x86_64 + package4>3.2.0

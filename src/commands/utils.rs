@@ -15,7 +15,18 @@ pub enum YesNoAnswer {
     NO,
 }
 
-pub fn yes_or_no(question: &str, default: YesNoAnswer) -> YesNoAnswer {
+pub fn yes_or_no(
+    question: &str,
+    default: YesNoAnswer,
+    no_prompt: bool,
+    no_prompt_message: Option<&str>,
+) -> YesNoAnswer {
+    if no_prompt {
+        if let Some(message) = no_prompt_message {
+            println!("{}", message);
+        }
+        return default;
+    }
     prompt(question, default);
     let mut line = String::new();
     loop {

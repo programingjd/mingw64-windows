@@ -11,12 +11,15 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-#[derive(Debug)]
+const PACKAGE_EXTENSION: &'static str = "pkg.tar";
+
+#[derive(Debug, Clone)]
 pub struct Package {
     pub repository: &'static Repository,
     pub name: String,
     pub version: String,
     pub compression: Option<&'static Compression>,
+    pub arch: Option<String>,
     pub url: Option<String>,
     pub dependencies: Option<Vec<String>>,
 }
@@ -66,8 +69,13 @@ impl TryFrom<&str> for Package {
         let repository = Repository::from(cols[0]).ok_or(ParseError)?;
         let name = cols[1].to_string();
         let version = cols[2].to_string();
-        let compression = if let Some(col) = cols.get(3) {
+        let compression = if let Some(&col) = cols.get(3) {
             Some(Compression::from_extension(col).ok_or(ParseError)?)
+        } else {
+            None
+        };
+        let arch = if let Some(&col) = cols.get(4) {
+            Some(col.to_string())
         } else {
             None
         };
@@ -77,12 +85,16 @@ impl TryFrom<&str> for Package {
                 .map(|it| it.to_string())
                 .collect()
         });
-        let url = compression.map(|it| url_from(repository, &name, &version, it));
+        let url = compression.and_then(|compression| {
+            arch.as_ref()
+                .map(|arch| url_from(repository, &name, &version, compression, arch))
+        });
         Ok(Package {
             repository,
             name,
             version,
             compression,
+            arch,
             url,
             dependencies,
         })
@@ -94,12 +106,15 @@ fn url_from(
     name: &str,
     version: &str,
     compression: &Compression,
+    arch: &str,
 ) -> String {
     format!(
-        "{}{}{}{}",
+        "{}{}-{}-{}.{}.{}",
         &repository.url(),
-        &name,
-        &version,
+        name,
+        version,
+        arch,
+        PACKAGE_EXTENSION,
         &compression.extension()
     )
 }
@@ -111,6 +126,9 @@ impl From<&Package> for String {
         let mut cols = vec![package.repository.name(), &package.name, &package.version];
         if let Some(ref compression) = package.compression {
             cols.push(compression.extension())
+        }
+        if let Some(ref arch) = package.arch {
+            cols.push(arch);
         }
         if let Some(ref deps) = package.dependencies {
             cols.push("+");
@@ -179,7 +197,11 @@ mod tests {
         assert!(package.url.is_some());
         let url = package.url.unwrap();
         assert!(url.starts_with(package.repository.url()));
-        assert!(url.ends_with(package.compression.unwrap().extension()));
+        assert!(url.ends_with(&format!(
+            ".{}.{}",
+            PACKAGE_EXTENSION,
+            package.compression.unwrap().extension()
+        )));
     }
 
     #[test]
@@ -195,12 +217,16 @@ mod tests {
         assert!(package.url.is_some());
         let url = package.url.unwrap();
         assert!(url.starts_with(package.repository.url()));
-        assert!(url.ends_with(package.compression.unwrap().extension()));
+        assert!(url.ends_with(&format!(
+            ".{}.{}",
+            PACKAGE_EXTENSION,
+            package.compression.unwrap().extension()
+        )));
     }
 
     #[test]
     fn test_parsing_without_dependencies() {
-        let package = Package::try_from("msys name version zst").unwrap();
+        let package = Package::try_from("msys name version zst any").unwrap();
         assert_eq!(package.repository, &Repository::Msys);
         assert_eq!(package.name, "name");
         assert_eq!(package.version, "version");
@@ -210,7 +236,11 @@ mod tests {
         assert!(package.url.is_some());
         let url = package.url.unwrap();
         assert!(url.starts_with(package.repository.url()));
-        assert!(url.ends_with(package.compression.unwrap().extension()));
+        assert!(url.ends_with(&format!(
+            ".{}.{}",
+            PACKAGE_EXTENSION,
+            package.compression.unwrap().extension()
+        )));
     }
 
     #[test]
@@ -230,7 +260,8 @@ mod tests {
         let name = "name".to_string();
         let version = "version".to_string();
         let compression = &Compression::ZSTD;
-        let url = Some(url_from(repository, &name, &version, compression));
+        let arch = "any";
+        let url = Some(url_from(repository, &name, &version, compression, arch));
         let compression = Some(compression);
         let dep1 = "dep1".to_string();
         let dep2 = "dep2=1.0".to_string();
@@ -242,12 +273,13 @@ mod tests {
             name,
             version,
             compression,
+            arch: Some(arch.to_string()),
             url,
             dependencies: Some(vec![dep1, dep2, dep3, dep4, dep5]),
         };
         assert_eq!(
             &String::from(&package),
-            "msys name version zst + dep1 dep2=1.0 dep3 dep4>0 dep5"
+            "msys name version zst any + dep1 dep2=1.0 dep3 dep4>0 dep5"
         )
     }
 
@@ -257,17 +289,19 @@ mod tests {
         let name = "package".to_string();
         let version = "1.0".to_string();
         let compression = &Compression::XZ;
-        let url = Some(url_from(repository, &name, &version, compression));
+        let arch = "x86_64";
+        let url = Some(url_from(repository, &name, &version, compression, arch));
         let compression = Some(compression);
         let package = Package {
             repository,
             name,
             version,
             compression,
+            arch: Some(arch.to_string()),
             url,
             dependencies: None,
         };
-        assert_eq!(&String::from(&package), "mingw64 package 1.0 xz")
+        assert_eq!(&String::from(&package), "mingw64 package 1.0 xz x86_64")
     }
 
     #[test]
@@ -275,21 +309,21 @@ mod tests {
         assert!(Package::try_from("").is_err());
         assert!(Package::try_from("msys").is_err());
         assert!(Package::try_from("msys name").is_err());
-        assert!(Package::try_from("unknown_repo name 1.0 zst").is_err());
-        assert!(Package::try_from("msys name 1.0 unknown_ext").is_err());
+        assert!(Package::try_from("unknown_repo name 1.0 zst x86_64").is_err());
+        assert!(Package::try_from("msys name 1.0 unknown_ext any").is_err());
     }
 
     #[test]
     fn test_eq() {
-        let package = Package::try_from("msys a 1 zst + d1 d2").unwrap();
-        assert_eq!(package, Package::try_from("msys a 1 zst + d1 d2").unwrap());
+        let package = Package::try_from("msys a 1 zst any + d1 d2").unwrap();
         assert_eq!(
             package,
-            Package::try_from("mingw64 a 1 zst + d1 d2").unwrap()
+            Package::try_from("mingw64 a 1 xz x86_64 + d1 d2 d3").unwrap()
         );
-        assert_eq!(package, Package::try_from("msys a 1 zst +").unwrap());
-        assert_eq!(package, Package::try_from("msys a 1 zst").unwrap());
-        assert_eq!(package, Package::try_from("msys a 1 xz").unwrap());
+        assert_eq!(package, Package::try_from("msys a 1 zst x86_64").unwrap());
+        assert_eq!(package, Package::try_from("msys a 1 zst any +").unwrap());
+        assert_eq!(package, Package::try_from("msys a 1 zst x86_64").unwrap());
+        assert_eq!(package, Package::try_from("msys a 1 xz any").unwrap());
         assert_ne!(package, Package::try_from("msys b 1 zst + d1 d2").unwrap());
         assert_ne!(package, Package::try_from("msys a 2 zst + d1 d2").unwrap());
     }

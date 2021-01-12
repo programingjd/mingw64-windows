@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::{env, fs};
 
-pub fn create_directory_structure(root_directory_path: &Path) {
+pub fn create_directory_structure(root_directory_path: &Path, no_prompt: bool) {
     if !root_directory_path.exists() {
-        match utils::yes_or_no("Directory doesn't exist. Create it?", YES) {
+        match utils::yes_or_no("Directory doesn't exist. Create it?", YES, no_prompt, None) {
             YES => {
                 if let Err(_) = fs::create_dir_all(root_directory_path) {
                     println!("{}", Color::Red.paint("Failed to create the directory."));
@@ -17,12 +17,52 @@ pub fn create_directory_structure(root_directory_path: &Path) {
             _ => process::exit(0),
         }
     }
-    let path = get_directory(root_directory_path);
-    create_dir_if_missing(&path);
-    let path = root_directory_path.join("bin");
-    create_dir_if_missing(&path);
-    let path = root_directory_path.join("etc");
-    create_dir_if_missing(&path);
+    // create var/local/packages
+    create_dir_if_missing(&get_directory(root_directory_path));
+
+    // create /usr
+    let usr = root_directory_path.join("usr");
+    create_dir_if_missing(&usr);
+    // create /usr/bin
+    let usr_bin = usr.join("bin");
+    create_dir_if_missing(&usr_bin);
+    // link /bin to /usr/bin
+    create_junction_if_missing(&root_directory_path.join("bin"), &usr_bin);
+    // create /usr/include
+    let usr_include = usr.join("include");
+    create_dir_if_missing(&usr_include);
+    // link /include to /usr/include
+    create_junction_if_missing(&root_directory_path.join("include"), &usr_include);
+    // create /usr/lib
+    let usr_lib = usr.join("lib");
+    create_dir_if_missing(&usr_lib);
+    // link /lib to /usr/lib
+    create_junction_if_missing(&root_directory_path.join("lib"), &usr_lib);
+    // create /usr/libexec
+    let usr_libexec = usr.join("libexec");
+    create_dir_if_missing(&usr_lib);
+    // link /libexec to /usr/libexec
+    create_junction_if_missing(&root_directory_path.join("libexec"), &usr_libexec);
+    // create /usr/share
+    let usr_share = usr.join("share");
+    create_dir_if_missing(&usr_share);
+    // link /share to /usr/share
+    create_junction_if_missing(&root_directory_path.join("share"), &usr_share);
+
+    // create /etc
+    let etc = root_directory_path.join("etc");
+    create_dir_if_missing(&etc);
+    // link /usr/etc to /etc
+    create_junction_if_missing(&usr.join("etc"), &etc);
+    // create /tmp
+    let tmp = root_directory_path.join("tmp");
+    create_dir_if_missing(&tmp);
+    // link /usr/tmp to /tmp
+    create_junction_if_missing(&usr.join("tmp"), &tmp);
+    // link /usr/var to /var
+    create_junction_if_missing(&usr.join("var"), &root_directory_path.join("var"));
+
+    // create /home and user directory
     let path = root_directory_path.join("home");
     create_dir_if_missing(&path);
     if let Ok(user) = env::var("USERNAME") {
@@ -33,20 +73,11 @@ pub fn create_directory_structure(root_directory_path: &Path) {
             create_bashrc_if_missing(&path);
         }
     }
-    let path = root_directory_path.join("include");
-    create_dir_if_missing(&path);
-    let path = root_directory_path.join("lib");
-    create_dir_if_missing(&path);
-    let path = root_directory_path.join("libexec");
-    create_dir_if_missing(&path);
-    let path = root_directory_path.join("mingw64");
-    create_junction_if_missing(&path, root_directory_path);
-    let path = root_directory_path.join("share");
-    create_dir_if_missing(&path);
-    let path = root_directory_path.join("tmp");
-    create_dir_if_missing(&path);
-    let path = root_directory_path.join("usr");
-    create_junction_if_missing(&path, root_directory_path);
+
+    // link /mingw64 to /usr
+    create_junction_if_missing(&root_directory_path.join("mingw64"), &usr);
+    // link /usr/local to /usr
+    create_junction_if_missing(&usr.join("local"), &usr);
 }
 
 fn create_dir_if_missing(path: &Path) {
@@ -79,8 +110,9 @@ fn create_bashrc_if_missing(home_directory: &Path) {
         let _ = fs::write(
             &file,
             r###"
-export PATH=/bin
+export PATH=/usr/bin
 export PS1="\[\e[35m\]\u@\h\[\e[m\]:\[\e[33m\]\w\[\e[m\]\\$"
+export TERM=cygwin
 HISCONTROL=ignoreboth
 shopt -s histappend
 HISTSIZE=1000
@@ -98,11 +130,11 @@ pub fn get_installed_packages_file_path(root_directory_path: &Path) -> PathBuf {
 }
 
 pub fn get_available_packages_file_path(root_directory_path: &Path) -> PathBuf {
-    get_directory(root_directory_path).join("installed")
+    get_directory(root_directory_path).join("available")
 }
 
 pub fn get_pending_installation_file_path(root_directory_path: &Path) -> PathBuf {
-    get_directory(root_directory_path).join("installed")
+    get_directory(root_directory_path).join("pending")
 }
 
 pub fn get_installed_packages_backup_file_path(root_directory_path: &Path) -> PathBuf {
