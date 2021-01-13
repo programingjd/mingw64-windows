@@ -133,7 +133,7 @@ fn missing_packages<'a>(
 }
 
 fn update_package(root_directory_path: &Path, package: &Package) -> Result<()> {
-    println!("{}", Color::Purple.paint(&package.name));
+    println!("{} {}", Color::Purple.paint(&package.name), package.version);
     let pending_installation_file_path =
         paths::get_pending_installation_file_path(root_directory_path);
     // first update the pending installation file so that we can retry
@@ -174,7 +174,7 @@ fn update_package(root_directory_path: &Path, package: &Package) -> Result<()> {
 // After that, we can reinstall those packages as normal.
 fn install_package(root_directory_path: &Path, package: &Package, setup: bool) -> Result<()> {
     if !setup {
-        println!("{}", Color::Purple.paint(&package.name));
+        println!("{} {}", Color::Purple.paint(&package.name), package.version);
     }
     let pending_installation_file_path =
         paths::get_pending_installation_file_path(root_directory_path);
