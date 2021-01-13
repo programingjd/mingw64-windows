@@ -394,7 +394,7 @@ fn extract_package(
                 &root_directory_path.join("usr").join("bin").join("bash.exe"),
             )
             .current_dir(root_directory_path)
-            .args(&["-c", "source /.INSTALL && declare -F -f post_install && post_install || declare -F -f post_upgrade && post_upgrade"])    
+            .args(&["-c", "source /.INSTALL && (declare -F -f post_install && post_install) || (declare -F -f post_upgrade && post_upgrade)"])    
             .env("PATH", &bash_env_path)
             .output()
             {
