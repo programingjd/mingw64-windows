@@ -16,6 +16,7 @@ const LIST_DEPENDENCIES_COMMAND: &str = "dependencies";
 fn main() {
     let _ = ansi_term::enable_ansi_support();
     let app = App::new("pwm")
+        .bin_name("pwm")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Msys/Mingw64 packages installer")
         .arg(
@@ -74,7 +75,12 @@ fn main() {
                         .multiple(true),
                 ),
         )
-        .setting(AppSettings::ArgRequiredElseHelp);
+        //.arg(Arg::new("hidden").short('V').hidden(true))
+        .setting(AppSettings::ArgRequiredElseHelp)
+        .setting(AppSettings::ColorAuto)
+        .setting(AppSettings::VersionlessSubcommands);
+
+    // .setting(AppSettings::NoBinaryName);
     let matches = app.get_matches();
     let no_prompt = matches.occurrences_of("no-prompt") > 0;
     if let Some(matches) = matches.subcommand_matches(LIST_INSTALLED_PACKAGES_COMMAND) {

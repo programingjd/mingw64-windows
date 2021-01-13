@@ -7,7 +7,7 @@ use std::collections::{BTreeSet, VecDeque};
 // Returns the packages in installation order. Dependencies should be installed before dependents.
 pub fn list(
     packages: Vec<&Package>,
-    installed_packages: &BTreeSet<&Package>,
+    installed_packages: &BTreeSet<Package>,
     available_packages: &BTreeSet<Package>,
 ) -> Vec<Package> {
     let mut processed = Vec::new();
@@ -77,6 +77,14 @@ pub fn list(
             }
         }
     }
+    // println!(
+    //     "{}",
+    //     processed
+    //         .iter()
+    //         .map(|it| it.name.to_string())
+    //         .collect::<Vec<_>>()
+    //         .join(", ")
+    // );
     processed
 }
 
