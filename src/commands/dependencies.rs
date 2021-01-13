@@ -7,7 +7,7 @@ use std::collections::{BTreeSet, VecDeque};
 // Returns the packages in installation order. Dependencies should be installed before dependents.
 pub fn list(
     packages: Vec<&Package>,
-    installed_packages: BTreeSet<&Package>,
+    installed_packages: &BTreeSet<&Package>,
     available_packages: &BTreeSet<Package>,
 ) -> Vec<Package> {
     let mut processed = Vec::new();
@@ -41,7 +41,9 @@ pub fn list(
                     }
                     dependency_package
                 })
-                .filter(|&package| !installed_packages.contains(package))
+                .filter(|&package| {
+                    !installed_packages.contains(package) && !processed.contains(package)
+                })
                 .collect();
             if dependencies.is_empty() {
                 None
@@ -54,7 +56,7 @@ pub fn list(
             .map(|&it| it.name.as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        println!("{}", snapshot);
+        // println!("{}", snapshot);
         if snapshots.insert(snapshot) && dependencies.is_some() {
             let mut dependencies = dependencies.unwrap();
             dependencies.sort_by_key(|&it| {
@@ -69,7 +71,10 @@ pub fn list(
                 packages.push_front(dependency);
             }
         } else {
-            processed.push(packages.pop_front().unwrap().clone());
+            let package = packages.pop_front().unwrap();
+            if !processed.contains(package) {
+                processed.push(package.clone());
+            }
         }
     }
     processed
@@ -119,7 +124,8 @@ mod tests {
         let package2 = available_packages::latest_version("package2", &available_packages);
         assert!(package2.is_some());
         let package2 = package2.unwrap();
-        let list = super::list(vec![package1], BTreeSet::new(), &available_packages);
+        let empty = BTreeSet::new();
+        let list = super::list(vec![package1], &empty, &available_packages);
         assert_eq!(2, list.len());
         let first = list.first().unwrap();
         let last = list.last().unwrap();
@@ -139,7 +145,7 @@ mod tests {
         let package2 = package2.unwrap();
         let mut installed_packages = BTreeSet::new();
         installed_packages.insert(package2);
-        let list = super::list(vec![package1], installed_packages, &available_packages);
+        let list = super::list(vec![package1], &installed_packages, &available_packages);
         assert_eq!(1, list.len());
         let first = list.first().unwrap();
         assert_eq!(package1, first);

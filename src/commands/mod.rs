@@ -161,11 +161,12 @@ pub fn list_dependencies(
 ) {
     let available_packages_file_path = paths::get_available_packages_file_path(root_directory_path);
     let available_packages = available_packages::get_packages(&available_packages_file_path);
+    let empty = BTreeSet::new();
     let mut results = dependencies::list(
         get_packages(root_directory_path, package_names, no_prompt)
             .iter()
             .collect(),
-        BTreeSet::new(),
+        &empty,
         &available_packages,
     );
     results.sort();

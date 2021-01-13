@@ -19,70 +19,62 @@ pub fn install(root_directory_path: &Path, packages: BTreeSet<Package>) {
     let available_packages_file_path = paths::get_available_packages_file_path(root_directory_path);
     let available_packages = available_packages::get_packages(&available_packages_file_path);
 
-    // add bash and coreutils if they aren't installed already, as they are needed to run
-    // some of the packages post-install scripts.
-    // also remove packages that are already installed (with the same version).
-    let packages: Vec<_> = if installed_packages
-        .iter()
-        .find(|&it| &it.name == "bash")
-        .is_none()
-    {
-        let bash = available_packages::latest_version("bash", &available_packages);
-        if bash.is_none() {
-            println!(
-                "{}",
-                Color::Red.paint("Could not find bash package. Aborting.")
-            );
-            process::exit(1);
-        }
-        let bash = bash.unwrap();
-        // if bash is missing, then coreutils is missing too.
-        let coreutils = available_packages::latest_version("coreutils", &available_packages);
-        if coreutils.is_none() {
-            println!(
-                "{}",
-                Color::Red.paint("Could not find coreutils package. Aborting.")
-            );
-            process::exit(1);
-        }
-        let coreutils = coreutils.unwrap();
-        vec![bash, coreutils]
-            .into_iter()
-            .chain(packages.iter().filter(|&it| {
-                !installed_packages.contains(it) && it.name != "bash" && it.name != "coreutils"
-            }))
-            .collect()
-    } else if installed_packages
-        .iter()
-        .find(|&it| &it.name == "coreutils")
-        .is_none()
-    {
-        let coreutils = available_packages::latest_version("coreutils", &available_packages);
-        if coreutils.is_none() {
-            println!(
-                "{}",
-                Color::Red.paint("Could not find coreutils package. Aborting.")
-            );
-            process::exit(1);
-        }
-        let coreutils = coreutils.unwrap();
-        vec![coreutils]
-            .into_iter()
-            .chain(
-                packages
-                    .iter()
-                    .filter(|&it| !installed_packages.contains(it) && it.name != "coreutils"),
-            )
-            .collect()
-    } else {
-        packages
-            .iter()
-            .filter(|&it| !installed_packages.contains(it))
-            .collect()
-    };
+    // We need bash, info, and coreutils to run post-install scripts.
+    // However, info and coreutils and/or their dependencies have post-install scripts.
+    // Therefore, we first install bash, and then install info and coreutils with
+    // setup=true to skip running the scripts and flagging them as installed.
+    // Then we run the installation of info and coreutils as normal.
 
-    for package in dependencies::list(packages, installed_packages, &available_packages) {
-        if install_package(root_directory_path, &package).is_err() {
+    let bash = missing_packages(vec!["bash"], &installed_packages, &available_packages);
+    if !bash.is_empty() {
+        for package in dependencies::list(bash, &installed_packages, &available_packages) {
+            if install_package(root_directory_path, &package, false).is_err() {
+                println!(
+                    "{}",
+                    Color::Red.paint(format!("Failed to install {}. Aborting.", &package.name))
+                );
+                process::exit(1);
+            }
+        }
+    }
+
+    let info_coreutils = missing_packages(
+        vec!["info", "coreutils"],
+        &installed_packages,
+        &available_packages,
+    );
+    if !info_coreutils.is_empty() {
+        for package in dependencies::list(
+            info_coreutils.clone(),
+            &installed_packages,
+            &available_packages,
+        ) {
+            if install_package(root_directory_path, &package, true).is_err() {
+                println!(
+                    "{}",
+                    Color::Red.paint(format!("Failed to install {}. Aborting.", &package.name))
+                );
+                process::exit(1);
+            }
+        }
+        for package in dependencies::list(info_coreutils, &installed_packages, &available_packages)
+        {
+            if install_package(root_directory_path, &package, false).is_err() {
+                println!(
+                    "{}",
+                    Color::Red.paint(format!("Failed to install {}. Aborting.", &package.name))
+                );
+                process::exit(1);
+            }
+        }
+    }
+
+    for package in dependencies::list(
+        packages.iter().collect(),
+        &installed_packages,
+        &available_packages,
+    ) {
+        if install_package(root_directory_path, &package, false).is_err() {
             println!(
                 "{}",
                 Color::Red.paint(format!("Failed to install {}. Aborting.", &package.name))
@@ -90,86 +82,58 @@ pub fn install(root_directory_path: &Path, packages: BTreeSet<Package>) {
             process::exit(1);
         }
     }
-
-    // let mut snapshots = BTreeSet::new();
-    // while !packages.is_empty() {
-    //     let &package = packages.front().unwrap();
-    //     let dependencies = package.dependencies.as_ref().and_then(|dependencies| {
-    //         let dependencies: Vec<_> = dependencies
-    //             .iter()
-    //             .filter_map(|dependency| {
-    //                 let dependency_package = dependency_name(dependency).and_then(|name| {
-    //                     available_packages::latest_version(name, &available_packages)
-    //                 });
-    //                 if dependency_package.is_none() {
-    //                     println!(
-    //                         "{}",
-    //                         Color::Red.paint(format!(
-    //                             "Could not find {} dependency: {}",
-    //                             &package.name, dependency
-    //                         ))
-    //                     );
-    //                 }
-    //                 dependency_package
-    //             })
-    //             .filter(|&package| !installed_packages.contains(package))
-    //             .collect();
-    //         if dependencies.is_empty() {
-    //             None
-    //         } else {
-    //             Some(dependencies)
-    //         }
-    //     });
-    //     let snapshot = packages
-    //         .iter()
-    //         .map(|&it| it.name.as_str())
-    //         .collect::<Vec<_>>()
-    //         .join(", ");
-    //     println!("{}", snapshot);
-    //     if snapshots.insert(snapshot) && dependencies.is_some() {
-    //         let mut dependencies = dependencies.unwrap();
-    //         dependencies.sort_by_key(|&it| {
-    //             -1 * it
-    //                 .dependencies
-    //                 .as_ref()
-    //                 .map(|it| it.len() as i8)
-    //                 .unwrap_or(0)
-    //         });
-    //         for dependency in dependencies {
-    //             packages.retain(|&it| it != dependency);
-    //             packages.push_front(dependency);
-    //         }
-    //     } else {
-    //         match install_package(root_directory_path, package) {
-    //             Ok(_) => {
-    //                 installed_packages.insert(packages.pop_front().unwrap());
-    //             }
-    //             Err(_) => {
-    //                 println!(
-    //                     "{}",
-    //                     Color::Red.paint(format!("Failed to install {}. Aborting.", &package.name))
-    //                 );
-    //                 process::exit(1);
-    //             }
-    //         }
-    //     }
-    // }
 }
 
 pub fn update(root_directory_path: &Path, packages: BTreeSet<Package>) {
     todo!()
 }
 
-fn install_package(root_directory_path: &Path, package: &Package) -> Result<()> {
-    println!("{}", Color::Purple.paint(&package.name));
-    // first update the pending installation file so that we retry the installation if we crash or
-    // the program is interrupted.
+fn missing_packages<'a>(
+    packages: Vec<&str>,
+    installed_packages: &BTreeSet<&Package>,
+    available_packages: &'a BTreeSet<Package>,
+) -> Vec<&'a Package> {
+    packages
+        .into_iter()
+        .filter_map(
+            |name| match installed_packages.iter().find(|&it| &it.name == name) {
+                Some(_) => None,
+                None => match available_packages::latest_version(name, available_packages) {
+                    Some(it) => Some(it),
+                    None => {
+                        println!(
+                            "{}",
+                            Color::Red
+                                .paint(&format!("Could not find {} package. Aborting.", name))
+                        );
+                        process::exit(1);
+                    }
+                },
+            },
+        )
+        .collect()
+}
+
+// We need bash, info and coreutils to run install scripts,
+// but coreutils and some of its dependencies have install scripts of their own.
+// Therefore, we need a first step that installs those packages first
+// without running the install scripts (setup arg to true)
+// and without flagging those packages as installed.
+// After that, we can reinstall those packages as normal.
+fn install_package(root_directory_path: &Path, package: &Package, setup: bool) -> Result<()> {
+    if !setup {
+        println!("{}", Color::Purple.paint(&package.name));
+    }
     let pending_installation_file_path =
         paths::get_pending_installation_file_path(root_directory_path);
-    fs::write(
-        &pending_installation_file_path,
-        String::from(package).as_str(),
-    )?;
+    if !setup {
+        // first update the pending installation file so that we retry the installation if we crash or
+        // the program is interrupted.
+        fs::write(
+            &pending_installation_file_path,
+            String::from(package).as_str(),
+        )?;
+    }
     let bytes = download_package_archive(package)?;
     let compression = package.compression.unwrap();
     let bytes = match compression.decompress(bytes.as_slice()) {
@@ -186,11 +150,13 @@ fn install_package(root_directory_path: &Path, package: &Package) -> Result<()> 
             return Err(err);
         }
     };
-    extract_package(root_directory_path, bytes.as_slice())?;
-    // update the installed packages file
-    installed_packages::append_package(root_directory_path, package)?;
-    // remove the pending installation file
-    rm_rf::remove(&pending_installation_file_path).map_err(|_| Error::RemoveError)?;
+    extract_package(root_directory_path, bytes.as_slice(), setup)?;
+    if !setup {
+        // update the installed packages file
+        installed_packages::append_package(root_directory_path, package)?;
+        // remove the pending installation file
+        rm_rf::remove(&pending_installation_file_path).map_err(|_| Error::RemoveError)?;
+    }
     Ok(())
 }
 
@@ -211,12 +177,13 @@ fn download_package_archive(package: &Package) -> Result<Vec<u8>> {
     }
 }
 
-fn extract_package(root_directory_path: &Path, uncompressed_package_archive: &[u8]) -> Result<()> {
-    let bash_env_path = root_directory_path
-        .join("usr")
-        .join("bin")
-        .to_string_lossy()
-        .to_string();
+fn extract_package(
+    root_directory_path: &Path,
+    uncompressed_package_archive: &[u8],
+    setup: bool,
+) -> Result<()> {
+    // two steps, regular files first, and then links
+    // regular files
     match tar::Archive::new(uncompressed_package_archive).entries() {
         Ok(entries) => {
             entries.filter_map(|it| it.ok()).for_each(|mut entry| {
@@ -228,35 +195,11 @@ fn extract_package(root_directory_path: &Path, uncompressed_package_archive: &[u
                                 ".MTREE" => {}
                                 ".PKGINFO" => {}
                                 ".INSTALL" => {
-                                    let path = root_directory_path.join(name);
-                                    entry.unpack(&path).unwrap();
-                                    match std::process::Command::new(
-                                        &root_directory_path.join("usr").join("bin").join("bash.exe"),
-                                    )
-                                    .current_dir(root_directory_path)
-                                    .arg(".INSTALL")
-                                    .env("PATH", &bash_env_path)
-                                    .output()
-                                    {
-                                        Ok(output) => {
-                                            if !output.stderr.is_empty() {
-                                                println!(
-                                                    "{}",
-                                                    Color::Red.paint(String::from_utf8_lossy(
-                                                        &output.stderr
-                                                    ))
-                                                );
-                                            }
-                                        }
-                                        Err(err) => {
-                                            println!(
-                                                "{}",
-                                                Color::Red.paint("Failed to run install script")
-                                            );
-                                            println!("{:?}", err);
-                                        }
-                                    };
-                                    std::fs::remove_file(&path).unwrap();
+                                    if !setup {
+                                        // install script that we will run later
+                                        let path = root_directory_path.join(name);
+                                        entry.unpack(&path).unwrap();
+                                    }
                                 }
                                 name => {
                                     if !name.contains("..") {
@@ -267,45 +210,40 @@ fn extract_package(root_directory_path: &Path, uncompressed_package_archive: &[u
                                         });
                                         if match entry.header().entry_type() {
                                             EntryType::Directory => fs::create_dir_all(&path).ok(),
-                                            EntryType::Link | EntryType::Symlink => {
-                                                entry
-                                                    .link_name()
-                                                    .ok()
-                                                    .and_then(|it| it)
-                                                    .and_then(|it| {
-                                                        junction::create(
-                                                            path.join(it.to_str().unwrap()),
-                                                            &path
-                                                        ).ok()
-                                                    })
-                                            },
-                                            EntryType::Regular => {
-                                                rm_rf::ensure_removed(&path).ok()
-                                                    .and_then(|_| entry.unpack(&path).map(|_| ()).ok())
-                                            }
+                                            EntryType::Link | EntryType::Symlink => Some(()),
+                                            EntryType::Regular => rm_rf::ensure_removed(&path)
+                                                .ok()
+                                                .and_then(|_| entry.unpack(&path).map(|_| ()).ok()),
                                             it => {
                                                 println!(
                                                     "{}",
                                                     Color::Red.paint(&format!(
-                                                        "Skipping unsupported entry {} of type {:?}",
+                                                        "Skipping unsupported {:?} entry {}",
+                                                        &entry_type_name(&it),
                                                         path.strip_prefix(root_directory_path)
                                                             .unwrap()
-                                                            .to_string_lossy(),
-                                                        it
+                                                            .to_string_lossy()
                                                     ))
                                                 );
                                                 Some(())
                                             }
-                                        }.is_none() {
-                                            println!(
-                                                "{}",
-                                                Color::Red.paint(&format!(
-                                                    "Failed to extract {}",
-                                                    path.strip_prefix(root_directory_path)
-                                                        .unwrap()
-                                                        .to_string_lossy()
-                                                ))
-                                            );
+                                        }
+                                        .is_none()
+                                        {
+                                            if !setup {
+                                                println!(
+                                                    "{}",
+                                                    Color::Red.paint(&format!(
+                                                        "Failed to create {:?} /{}",
+                                                        &entry_type_name(
+                                                            &entry.header().entry_type()
+                                                        ),
+                                                        path.strip_prefix(root_directory_path)
+                                                            .unwrap()
+                                                            .to_string_lossy()
+                                                    ))
+                                                );
+                                            }
                                         }
                                     }
                                 }
@@ -318,7 +256,114 @@ fn extract_package(root_directory_path: &Path, uncompressed_package_archive: &[u
         }
         Err(_) => return Err(Error::DecompressionError),
     }
+    // links
+    match tar::Archive::new(uncompressed_package_archive).entries() {
+        Ok(entries) => {
+            entries.filter_map(|it| it.ok()).for_each(|entry| {
+                match entry.path() {
+                    Ok(name) => {
+                        if name.is_relative() {
+                            match name.to_string_lossy().borrow() {
+                                ".BUILDINFO" => {}
+                                ".MTREE" => {}
+                                ".PKGINFO" => {}
+                                ".INSTALL" => {}
+                                name => {
+                                    if !name.contains("..") {
+                                        let path = root_directory_path.join(name);
+                                        if match entry.header().entry_type() {
+                                            EntryType::Link | EntryType::Symlink => {
+                                                rm_rf::ensure_removed(&path).ok().and_then(|_| {
+                                                    entry
+                                                        .link_name()
+                                                        .ok()
+                                                        .and_then(|it| it)
+                                                        .and_then(|it| {
+                                                            let target =
+                                                                path.join(it.to_str().unwrap());
+                                                            if target.exists() {
+                                                                junction::create(&target, &path)
+                                                                    .ok()
+                                                            } else {
+                                                                None
+                                                            }
+                                                        })
+                                                })
+                                            }
+                                            _ => Some(()),
+                                        }
+                                        .is_none()
+                                        {
+                                            if !setup {
+                                                println!(
+                                                    "{}",
+                                                    Color::Red.paint(&format!(
+                                                        "Failed to create {:?} /{}",
+                                                        &entry_type_name(
+                                                            &entry.header().entry_type()
+                                                        ),
+                                                        path.strip_prefix(root_directory_path)
+                                                            .unwrap()
+                                                            .to_string_lossy()
+                                                    ))
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => println!("{}", &Color::Red.paint("Invalid path in tar archive")),
+                };
+            });
+        }
+        Err(_) => return Err(Error::DecompressionError),
+    }
+    if !setup {
+        // run the install script
+        let path = root_directory_path.join(".INSTALL");
+        if path.exists() {
+            let bash_env_path = root_directory_path
+                .join("usr")
+                .join("bin")
+                .to_string_lossy()
+                .to_string();
+            match std::process::Command::new(
+                &root_directory_path.join("usr").join("bin").join("bash.exe"),
+            )
+            .current_dir(root_directory_path)
+            .args(&["-c", "source /.INSTALL && declare -F -f post_install && post_install || declare -F -f post_upgrade && post_upgrade"])    
+            .env("PATH", &bash_env_path)
+            .output()
+            {
+                Ok(output) => {
+                    if !output.stderr.is_empty() {
+                        println!(
+                            "{}",
+                            Color::Red.paint(String::from_utf8_lossy(&output.stderr))
+                        );
+                    }
+                }
+                Err(err) => {
+                    println!("{}", Color::Red.paint("Failed to run install script"));
+                    println!("{:?}", err);
+                }
+            };
+            std::fs::remove_file(&path).unwrap();
+        }
+    }
     Ok(())
+}
+
+fn entry_type_name(entry_type: &EntryType) -> String {
+    match entry_type {
+        EntryType::Regular => "file".to_string(),
+        EntryType::Directory => "directory".to_string(),
+        EntryType::Symlink => "symlink".to_string(),
+        EntryType::Link => "link".to_string(),
+        _ => format!("{:?}", entry_type).to_ascii_lowercase(),
+    }
 }
 
 pub fn check_for_pending_installation(root_directory_path: &Path, no_prompt: bool) {

@@ -40,7 +40,7 @@ pub fn create_directory_structure(root_directory_path: &Path, no_prompt: bool) {
     create_junction_if_missing(&root_directory_path.join("lib"), &usr_lib);
     // create /usr/libexec
     let usr_libexec = usr.join("libexec");
-    create_dir_if_missing(&usr_lib);
+    create_dir_if_missing(&usr_libexec);
     // link /libexec to /usr/libexec
     create_junction_if_missing(&root_directory_path.join("libexec"), &usr_libexec);
     // create /usr/share
