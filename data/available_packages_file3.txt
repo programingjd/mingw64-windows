@@ -1,5 +1,5 @@
 msys 3 mingw64 3
-mingw64 name 1.0 zst x86_64
-mingw64 name 1.2 zst x86_64 +
-msys other 0.9 zst any
-mingw64 name 0.9 zst any + other=0.9
+mingw64	name	1.0	zst	x86_64
+mingw64	name	1.2	zst	x86_64 +
+msys	other	0.9	zst	any
+mingw64	name	0.9	zst	any	+	other=0.9

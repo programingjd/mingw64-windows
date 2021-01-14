@@ -1,6 +1,6 @@
 msys 1 mingw64 2
-msys package1 1.0 zst x86_64 + package2 package3
-msys package2 1.0 zst x86_64 +
-msys package3 1.0.1 xz any
-mingw64 package4 3.1 zst x86_64 +
-mingw64 package5 3.1.2 zst x86_64 + package4>3.0
+msys	package1	1.0	zst	x86_64	+	package2	package3
+msys	package2	1.0	zst	x86_64	+
+msys	package3	1.0.1	xz	any
+mingw64	package4	3.1	zst	x86_64	+
+mingw64	package5	3.1.2	zst	x86_64	+	package4>3.0

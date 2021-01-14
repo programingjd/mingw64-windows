@@ -203,7 +203,7 @@ pub fn get_packages(available_packages_file: &Path) -> BTreeSet<Package> {
 pub fn latest_version<'a>(name: &str, packages: &'a BTreeSet<Package>) -> Option<&'a Package> {
     packages
         .iter()
-        .filter(|&it| &it.name == name)
+        .filter(|&it| it.matches(name))
         .max_by_key(|&it| &it.version)
 }
 
@@ -338,19 +338,19 @@ mod tests {
         let packages = Packages::get_packages_from_file(&DATA_DIR.join(filename)).unwrap();
         assert_eq!(packages.len(), 5);
         assert!(packages
-            .get(&Package::try_from("msys package1 1.0").unwrap())
+            .get(&Package::try_from("msys\tpackage1\t1.0").unwrap())
             .is_some());
         assert!(packages
-            .get(&Package::try_from("msys package2 1.0 zst x86_64").unwrap())
+            .get(&Package::try_from("msys\tpackage2\t1.0\tzst\tx86_64").unwrap())
             .is_some());
         assert!(packages
-            .get(&Package::try_from("msys package3 1.0.1 zst any").unwrap())
+            .get(&Package::try_from("msys\tpackage3\t1.0.1\tzst\tany").unwrap())
             .is_some());
         assert!(packages
-            .get(&Package::try_from("mingw64 package4 3.1").unwrap())
+            .get(&Package::try_from("mingw64\tpackage4\t3.1").unwrap())
             .is_some());
         assert!(packages
-            .get(&Package::try_from("mingw64 package5 3.1.2").unwrap())
+            .get(&Package::try_from("mingw64\tpackage5\t3.1.2").unwrap())
             .is_some());
     }
 

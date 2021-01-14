@@ -122,7 +122,7 @@ impl Repository {
     /// The desc file has sections separated by blank lines.
     /// Each section starts with a line containing the section name (%FILENAME%, %NAME%, ...)
     /// and then one line per value.
-    fn read_description(&self, desc: &str) -> Option<Package> {
+    fn read_description(&'static self, desc: &str) -> Option<Package> {
         // split into sections, then each section into lines
         let sections: Vec<Vec<_>> = desc
             .split("\n\n")
@@ -130,7 +130,8 @@ impl Repository {
             .collect();
         // name is the unique value of the %NAME% section
         let names = Self::section_values("%NAME%", &sections)?;
-        let name = names.first()?;
+        let name = names.first()?.to_string();
+        let names = Self::section_values("%PROVIDES%", &sections).unwrap_or(vec![]);
         // version is the unique value of the %VERSION% section
         let versions = Self::section_values("%VERSION%", &sections)?;
         let version = versions.first()?;
@@ -140,24 +141,21 @@ impl Repository {
         // filename is the unique value of the %FILENAME% section
         // we deduce the package url and compression from it
         let filenames = Self::section_values("%FILENAME%", &sections)?;
-        let filename = Path::new(filenames.first()?);
+        let filename = filenames.first()?;
+        //let mut name = filename.to_string();
+        //name.replace_range(filename.rfind(format!("-{}-", version))?.., "");
         // dependencies are the values of the %DEPENDS% section
         let dependencies = Self::section_values("%DEPENDS%", &sections).or(Some(vec![]));
         Some(Package {
             repository: Repository::from(&self.name())?,
-            name: name.to_string(),
+            names: std::iter::once(name).chain(names).collect(),
             version: version.to_string(),
             compression: Some(
-                filename.extension().and_then(|ext| {
+                Path::new(filename).extension().and_then(|ext| {
                     Compression::from_extension(&ext.to_string_lossy().to_string())
                 })?,
             ),
             arch: Some(arch.to_string()),
-            url: Some(format!(
-                "{}{}",
-                &self.url(),
-                &filename.to_string_lossy().to_string()
-            )),
             dependencies,
         })
     }
@@ -182,10 +180,9 @@ mod tests {
     #[test]
     fn test() {
         let packages = Repository::Msys.remote_packages().unwrap();
-        println!("ETag: {:?}", &packages.version.etag);
-        packages
-            .list
-            .iter()
-            .for_each(|package| println!("{}", &String::from(package)));
+        // packages
+        //     .list
+        //     .iter()
+        //     .for_each(|package| println!("{}", &String::from(package)));
     }
 }

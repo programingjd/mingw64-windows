@@ -1,4 +1,4 @@
 msys 4 mingw64 4
-msys package1 1.0 zst x86_64 + package2
-msys package3 1.1 zst any + package2
-mingw64 package2 1.0 zst any
+msys	package1	1.0	zst	x86_64	+	package2
+msys	package3	1.1	zst	any	+	package2
+mingw64	package2	1.0	zst	any

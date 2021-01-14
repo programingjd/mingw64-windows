@@ -66,11 +66,11 @@ pub fn list_installed_packages(root_directory_path: &Path, packages: BTreeSet<&s
                 .filter_map(|name| {
                     installed_packages
                         .iter()
-                        .find(|&it| &it.name == name)
+                        .find(|&it| it.matches(name))
                         .map(|package| {
                             format!(
                                 "{} {}",
-                                Color::Purple.paint(&package.name),
+                                Color::Purple.paint(package.name()),
                                 &package.version
                             )
                         })
@@ -92,7 +92,7 @@ pub fn list_all_installed_packages(root_directory_path: &Path) {
                 .map(|package| {
                     format!(
                         "{} {}",
-                        Color::Purple.paint(&package.name),
+                        Color::Purple.paint(package.name()),
                         &package.version
                     )
                 })
@@ -109,11 +109,13 @@ pub fn search_available_packages(root_directory_path: &Path, terms: BTreeSet<&st
     let mut results: Vec<_> = packages
         .iter()
         .filter_map(|package| {
-            let name = &package.name;
+            let name = package.name();
             let score: u16 = terms
                 .iter()
                 .filter_map(|&term| {
-                    if name.starts_with(term) {
+                    if name == term {
+                        Some(8u16)
+                    } else if name.starts_with(term) {
                         Some(4u16)
                     } else if name.starts_with(format!("lib{}", term).as_str()) {
                         Some(2u16)
@@ -137,7 +139,7 @@ pub fn search_available_packages(root_directory_path: &Path, terms: BTreeSet<&st
     });
     results.iter().for_each(|it| {
         let package = it.1;
-        let mut name = ANSIString::from(&package.name);
+        let mut name = ANSIString::from(package.name());
         let version = &package.version;
         for &term in &terms {
             let replacement = Color::Green.paint(term);
@@ -173,7 +175,7 @@ pub fn list_dependencies(
     results.iter().for_each(|package| {
         println!(
             "{} {}",
-            Color::Purple.paint(&package.name),
+            Color::Purple.paint(package.name()),
             &package.version
         );
     });

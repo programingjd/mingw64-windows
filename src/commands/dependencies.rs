@@ -35,7 +35,8 @@ pub fn list(
                             "{}",
                             Color::Red.paint(format!(
                                 "Could not find {} dependency: {}",
-                                &package.name, dependency
+                                package.name(),
+                                dependency
                             ))
                         );
                     }
@@ -53,7 +54,7 @@ pub fn list(
         });
         let snapshot = packages
             .iter()
-            .map(|&it| it.name.as_str())
+            .map(|&it| it.name())
             .collect::<Vec<_>>()
             .join(", ");
         // println!("{}", snapshot);
@@ -152,7 +153,7 @@ mod tests {
         assert!(package2.is_some());
         let package2 = package2.unwrap();
         let mut installed_packages = BTreeSet::new();
-        installed_packages.insert(package2);
+        installed_packages.insert(package2.clone());
         let list = super::list(vec![package1], &installed_packages, &available_packages);
         assert_eq!(1, list.len());
         let first = list.first().unwrap();

@@ -48,7 +48,7 @@ pub fn replace_package(root_directory_path: &Path, package: &Package) -> Result<
     for line in input {
         let line = line?;
         let current = Package::try_from(line.as_str())?;
-        if &package.name == &current.name {
+        if current.matches(package.name()) {
             output.push(String::from(&current));
         } else {
             output.push(line);
@@ -82,13 +82,13 @@ mod tests {
         let packages = Packages::get_packages_from_file(&DATA_DIR.join(filename)).unwrap();
         assert_eq!(packages.len(), 3);
         assert!(packages
-            .get(&Package::try_from("msys package version").unwrap())
+            .get(&Package::try_from("msys\tpackage, p\tversion").unwrap())
             .is_some());
         assert!(packages
-            .get(&Package::try_from("msys p1 1.0").unwrap())
+            .get(&Package::try_from("msys\tp1\t1.0").unwrap())
             .is_some());
         assert!(packages
-            .get(&Package::try_from("mingw64 p2 3").unwrap())
+            .get(&Package::try_from("mingw64\tp2\t3").unwrap())
             .is_some());
     }
 }

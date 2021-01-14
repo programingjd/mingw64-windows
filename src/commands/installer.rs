@@ -35,7 +35,7 @@ pub fn install(root_directory_path: &Path, packages: BTreeSet<Package>) {
             if install_package(root_directory_path, &package, false).is_err() {
                 println!(
                     "{}",
-                    Color::Red.paint(format!("Failed to install {}. Aborting.", &package.name))
+                    Color::Red.paint(format!("Failed to install {}. Aborting.", package.name()))
                 );
                 process::exit(1);
             }
@@ -57,7 +57,7 @@ pub fn install(root_directory_path: &Path, packages: BTreeSet<Package>) {
             if install_package(root_directory_path, &package, true).is_err() {
                 println!(
                     "{}",
-                    Color::Red.paint(format!("Failed to install {}. Aborting.", &package.name))
+                    Color::Red.paint(format!("Failed to install {}. Aborting.", package.name()))
                 );
                 process::exit(1);
             }
@@ -67,7 +67,7 @@ pub fn install(root_directory_path: &Path, packages: BTreeSet<Package>) {
             if install_package(root_directory_path, &package, false).is_err() {
                 println!(
                     "{}",
-                    Color::Red.paint(format!("Failed to install {}. Aborting.", &package.name))
+                    Color::Red.paint(format!("Failed to install {}. Aborting.", package.name()))
                 );
                 process::exit(1);
             }
@@ -83,7 +83,7 @@ pub fn install(root_directory_path: &Path, packages: BTreeSet<Package>) {
         if install_package(root_directory_path, &package, false).is_err() {
             println!(
                 "{}",
-                Color::Red.paint(format!("Failed to install {}. Aborting.", &package.name))
+                Color::Red.paint(format!("Failed to install {}. Aborting.", package.name()))
             );
             process::exit(1);
         }
@@ -98,7 +98,7 @@ pub fn update(root_directory_path: &Path, packages: BTreeSet<Package>) {
             if update_package(root_directory_path, &package).is_err() {
                 println!(
                     "{}",
-                    Color::Red.paint(format!("Failed to update {}. Aborting.", &package.name))
+                    Color::Red.paint(format!("Failed to update {}. Aborting.", package.name()))
                 );
                 process::exit(1);
             }
@@ -114,7 +114,7 @@ fn missing_packages<'a>(
     packages
         .into_iter()
         .filter_map(
-            |name| match installed_packages.iter().find(|&it| &it.name == name) {
+            |name| match installed_packages.iter().find(|&it| it.matches(name)) {
                 Some(_) => None,
                 None => match available_packages::latest_version(name, available_packages) {
                     Some(it) => Some(it),
@@ -133,7 +133,11 @@ fn missing_packages<'a>(
 }
 
 fn update_package(root_directory_path: &Path, package: &Package) -> Result<()> {
-    println!("{} {}", Color::Purple.paint(&package.name), package.version);
+    println!(
+        "{} {}",
+        Color::Purple.paint(package.name()),
+        package.version
+    );
     let pending_installation_file_path =
         paths::get_pending_installation_file_path(root_directory_path);
     // first update the pending installation file so that we can retry
@@ -152,7 +156,7 @@ fn update_package(root_directory_path: &Path, package: &Package) -> Result<()> {
                 Color::Red.paint(format!(
                     "Failed to decompress {} archive for {}",
                     compression.extension(),
-                    &package.name
+                    package.name()
                 ))
             );
             return Err(err);
@@ -174,7 +178,11 @@ fn update_package(root_directory_path: &Path, package: &Package) -> Result<()> {
 // After that, we can reinstall those packages as normal.
 fn install_package(root_directory_path: &Path, package: &Package, setup: bool) -> Result<()> {
     if !setup {
-        println!("{} {}", Color::Purple.paint(&package.name), package.version);
+        println!(
+            "{} {}",
+            Color::Purple.paint(package.name()),
+            package.version
+        );
     }
     let pending_installation_file_path =
         paths::get_pending_installation_file_path(root_directory_path);
@@ -196,7 +204,7 @@ fn install_package(root_directory_path: &Path, package: &Package, setup: bool) -
                 Color::Red.paint(format!(
                     "Failed to decompress {} archive for {}",
                     compression.extension(),
-                    &package.name
+                    package.name()
                 ))
             );
             return Err(err);
@@ -213,15 +221,16 @@ fn install_package(root_directory_path: &Path, package: &Package, setup: bool) -
 }
 
 fn download_package_archive(package: &Package) -> Result<Vec<u8>> {
-    let url = package.url.as_ref().unwrap();
-    match utils::download(url) {
+    let url = package.url().unwrap();
+    match utils::download(&url) {
         Ok(response) => Ok(response.body),
         Err(err) => {
             println!(
                 "{}",
                 Color::Red.paint(format!(
                     "Failed to download archive for {} from {}",
-                    &package.name, url
+                    package.name(),
+                    url
                 ))
             );
             Err(err)
@@ -446,7 +455,7 @@ pub fn check_for_pending_installation(root_directory_path: &Path, no_prompt: boo
                     INSTALL => {
                         println!(
                             "Installation of {} did not finish successfully.",
-                            Color::Purple.paint(&package.name)
+                            Color::Purple.paint(package.name())
                         );
                         let answer = utils::yes_or_no("Retry?", YES, no_prompt, Some("Retrying."));
                         match answer {
@@ -463,7 +472,7 @@ pub fn check_for_pending_installation(root_directory_path: &Path, no_prompt: boo
                     UPDATE => {
                         println!(
                             "Update of {} did not finish successfully.",
-                            Color::Purple.paint(&package.name)
+                            Color::Purple.paint(package.name())
                         );
                         let answer = utils::yes_or_no("Retry?", YES, no_prompt, Some("Retrying."));
                         match answer {

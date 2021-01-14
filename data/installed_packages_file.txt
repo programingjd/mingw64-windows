@@ -1,4 +1,4 @@
-#
-msys package version
-msys p1 1.0
-mingw64 p2 3
+
+msys	package, p	version
+msys	p1	1.0
+mingw64	p2	3
