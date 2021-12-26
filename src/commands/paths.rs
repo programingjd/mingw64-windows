@@ -74,6 +74,10 @@ pub fn create_directory_structure(root_directory_path: &Path, no_prompt: bool) {
         }
     }
 
+    // link /usr/x86_64-pc-msys to /usr
+    create_junction_if_missing(&usr.join("x86_64-pc-msys"), &usr);
+    // link /usr/x86_64-w64-mingw32 to /usr
+    create_junction_if_missing(&usr.join("x86_64-w64-mingw32"), &usr);
     // link /mingw64 to /usr
     create_junction_if_missing(&root_directory_path.join("mingw64"), &usr);
     // link /usr/local to /usr

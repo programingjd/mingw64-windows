@@ -90,8 +90,11 @@ pub fn list(
 }
 
 fn dependency_name(name_with_optional_version: &str) -> Option<&str> {
-    let re = Regex::new("[=>~#*]").unwrap();
-    re.split(name_with_optional_version)
+    lazy_static! {
+        static ref RE: Regex = Regex::new("[=>~#*]").unwrap();
+    };
+    (*RE)
+        .split(name_with_optional_version)
         .into_iter()
         .next()
         .map(|it| match it {

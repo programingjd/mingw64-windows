@@ -1,5 +1,5 @@
 use crate::commands::root_directory;
-use clap::{App, AppSettings, Arg};
+use clap::{App, AppSettings, Arg, ColorChoice};
 use std::collections::BTreeSet;
 
 mod commands;
@@ -23,16 +23,16 @@ fn main() {
             Arg::new("no-prompt")
                 .short('y')
                 .long("no-prompt")
-                .about("Disable confirmation prompts."),
+                .help("Disable confirmation prompts."),
         )
         .subcommand(
             App::new(LIST_INSTALLED_PACKAGES_COMMAND)
                 .about("list installed packages")
                 .arg(
                     Arg::new("package")
-                        .about("Looks for the specified package(s) only")
+                        .help("Looks for the specified package(s) only")
                         .required(false)
-                        .multiple(true),
+                        .multiple_values(true),
                 ),
         )
         .subcommand(
@@ -40,9 +40,9 @@ fn main() {
                 .about("search available packages")
                 .arg(
                     Arg::new("term")
-                        .about("The term to look for in the package name")
+                        .help("The term to look for in the package name")
                         .required(true)
-                        .multiple(true),
+                        .multiple_values(true),
                 ),
         )
         .subcommand(
@@ -50,9 +50,9 @@ fn main() {
                 .about("list dependencies of the specified packages")
                 .arg(
                     Arg::new("name")
-                        .about("The name of the packages to update")
+                        .help("The name of the packages to update")
                         .required(true)
-                        .multiple(true),
+                        .multiple_values(true),
                 ),
         )
         .subcommand(
@@ -60,9 +60,9 @@ fn main() {
                 .about("install packages")
                 .arg(
                     Arg::new("name")
-                        .about("The name of the package to install")
+                        .help("The name of the package to install")
                         .required(true)
-                        .multiple(true),
+                        .multiple_values(true),
                 ),
         )
         .subcommand(
@@ -70,15 +70,14 @@ fn main() {
                 .about("update packages")
                 .arg(
                     Arg::new("name")
-                        .about("The name of the packages to update")
+                        .help("The name of the packages to update")
                         .required(false)
-                        .multiple(true),
+                        .multiple_values(true),
                 ),
         )
         //.arg(Arg::new("hidden").short('V').hidden(true))
         .setting(AppSettings::ArgRequiredElseHelp)
-        .setting(AppSettings::ColorAuto)
-        .setting(AppSettings::VersionlessSubcommands);
+        .color(ColorChoice::Auto);
 
     // .setting(AppSettings::NoBinaryName);
     let matches = app.get_matches();

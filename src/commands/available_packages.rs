@@ -384,6 +384,7 @@ mod tests {
         packages.into_iter().for_each(|it| match it.repository {
             &Repository::Msys => msys_packages.push(it),
             &Repository::Mingw64 => mingw64_packages.push(it),
+            _ => panic!(),
         });
         let packages = vec![
             Packages {

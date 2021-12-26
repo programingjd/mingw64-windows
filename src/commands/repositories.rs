@@ -14,6 +14,8 @@ use crate::commands::utils::{Compression, ETag};
 pub enum Repository {
     Msys,
     Mingw64,
+    Clang64,
+    Ucrt64,
 }
 
 impl Display for Repository {
@@ -60,18 +62,24 @@ impl Repository {
         match self {
             Self::Msys => "msys",
             Self::Mingw64 => "mingw64",
+            Self::Clang64 => "clang64",
+            Self::Ucrt64 => "ucrt64",
         }
     }
     pub fn package_prefix(&self) -> &'static str {
         match self {
             Self::Msys => "",
             Self::Mingw64 => "mingw-w64-x86_64-",
+            Self::Clang64 => "mingw-w64-clang-x86_64-",
+            Self::Ucrt64 => "mingw-w64-ucrt-x86_64-",
         }
     }
     pub fn url(&self) -> &'static str {
         match self {
             Self::Msys => "https://repo.msys2.org/msys/x86_64/",
-            Self::Mingw64 => "https://repo.msys2.org/mingw/x86_64/",
+            Self::Mingw64 => "https://repo.msys2.org/mingw64/x86_64/",
+            Self::Clang64 => "https://repo.msys2.org/clang64/x86_64/",
+            Self::Ucrt64 => "https://repo.msys2.org/ucrt64/x86_64/",
         }
     }
     pub fn enabled() -> &'static [&'static Self] {
@@ -94,7 +102,7 @@ impl Repository {
     /// with package information.
     pub fn remote_packages(&'static self) -> Result<Packages> {
         let resp = utils::download(&self.db_url())?;
-        let data = Compression::GZ.decompress(&resp.body)?;
+        let data = resp.body;
         let mut tar = tar::Archive::new(data.as_slice());
         let entries = &mut tar.entries()?;
         Ok(Packages::create(
